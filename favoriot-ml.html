@@ -1,0 +1,403 @@
+<script type="text/javascript">
+    RED.nodes.registerType('favoriot-ml', {
+        category: 'Favoriot',
+        color: '#b90083',
+        defaults: {
+            name: { value: "" },
+            onnxPath: { value: "", required: true, validate: function(v) {
+                return v.trim().length > 0 && v.endsWith('.onnx');
+            }},
+            preprocessorPath: { value: "", required: false } // NEW: Optional preprocessor config
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-microchip",
+        paletteLabel: "Favoriot ML",
+        label: function() {
+            return this.name || "Favoriot ML";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            const node = this;
+            
+            // Add validation status indicators
+            $('#node-input-onnxPath').after(
+                '<span id="onnx-status" style="margin-left: 10px; display: none;">' +
+                '<i class="fa fa-check" style="color: green;"></i>' +
+                '</span>'
+            );
+            
+            $('#node-input-preprocessorPath').after(
+                '<span id="preprocessor-status" style="margin-left: 10px; display: none;">' +
+                '<i class="fa fa-check" style="color: green;"></i>' +
+                '</span>'
+            );
+            
+            // Validate ONNX path on change (and Auto-detect JSON)
+            $('#node-input-onnxPath').on('change', function() {
+                const onnxVal = $(this).val();
+                validateOnnxPath(onnxVal);
+                
+                // Auto-detect preprocessor config when ONNX path is entered
+                if (onnxVal && onnxVal.endsWith('.onnx')) {
+                    const derivedJsonPath = onnxVal.replace(/\.onnx$/, '.json');
+                    // Only auto-fill if the user hasn't typed something else custom
+                    // or if the field is empty.
+                    const currentJsonVal = $('#node-input-preprocessorPath').val();
+                    if (!currentJsonVal || currentJsonVal === derivedJsonPath || currentJsonVal === "") {
+                        $('#node-input-preprocessorPath').val(derivedJsonPath);
+                        validatePreprocessorPath(derivedJsonPath);
+                    }
+                }
+            });
+            
+            // Validate Preprocessor path on change
+            $('#node-input-preprocessorPath').on('change', function() {
+                validatePreprocessorPath($(this).val());
+            });
+            
+            function validateOnnxPath(filePath) {
+                const isValid = filePath && filePath.endsWith('.onnx');
+                $('#onnx-status').toggle(isValid);
+                updateCategoricalSupportIndicator();
+            }
+            
+            function validatePreprocessorPath(filePath) {
+                const isValid = filePath && filePath.endsWith('.json');
+                $('#preprocessor-status').toggle(isValid);
+                updateCategoricalSupportIndicator();
+            }
+            
+            function updateCategoricalSupportIndicator() {
+                const hasPreprocessor = $('#node-input-preprocessorPath').val().endsWith('.json');
+                const $indicator = $('#categorical-indicator');
+                
+                if (hasPreprocessor) {
+                    $indicator.html(
+                        '<i class="fa fa-check-circle" style="color: green; margin-right: 5px;"></i>' +
+                        '<span style="color: green; font-weight: bold;">Categorical Input Support: ENABLED</span>'
+                    );
+                } else {
+                    $indicator.html(
+                        '<i class="fa fa-info-circle" style="color: orange; margin-right: 5px;"></i>' +
+                        '<span style="color: #666;">Categorical Input Support: DISABLED (numeric only)</span>'
+                    );
+                }
+            }
+            
+            // Initialize indicators
+            setTimeout(() => {
+                validateOnnxPath($('#node-input-onnxPath').val());
+                validatePreprocessorPath($('#node-input-preprocessorPath').val());
+            }, 100);
+            
+            // Add help text
+            $('#dialog-form').append(
+                '<div class="form-row" style="margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">' +
+                '<p><strong><i class="fa fa-lightbulb"></i> Pro Tip:</strong> Favoriot automatically generates <code>.json</code> alongside your ONNX model when categorical features are detected during training!</p>' +
+                '<p style="margin-top: 8px; font-size: 13px; opacity: 0.9;">Paste your ONNX file path above, and the preprocessor config path will be auto-filled.</p>' +
+                '</div>'
+            );
+        },
+        oneditsave: function() {
+            // Validate before saving
+            const onnxPath = $('#node-input-onnxPath').val();
+            if (!onnxPath || !onnxPath.endsWith('.onnx')) {
+                RED.notify("Please enter a valid .onnx model file path", "error");
+                return false;
+            }
+            
+            const preprocessorPath = $('#node-input-preprocessorPath').val();
+            if (preprocessorPath && !preprocessorPath.endsWith('.json')) {
+                RED.notify("Preprocessor config must be a .json file path", "error");
+                return false;
+            }
+            
+            return true;
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="favoriot-ml">
+    <div class="form-row">
+        <label for="node-input-name">
+            <i class="fa fa-tag"></i> 
+            <span data-i18n="node-red:common.label.name"></span>
+        </label>
+        <input type="text" id="node-input-name" placeholder="Name (optional)">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-onnxPath">
+            <i class="fa fa-file-code"></i> 
+            ONNX Model Path <span class="red-ui-node-input-required">*</span>
+        </label>
+        <input type="text" id="node-input-onnxPath" 
+               style="width: 100%;" 
+               placeholder="/path/to/model.onnx">
+    </div>
+    
+    <div class="form-row" style="margin-top: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid #6F42C1;">
+        <label for="node-input-preprocessorPath" style="font-weight: 600; display: block; margin-bottom: 8px;">
+            <i class="fa fa-cogs"></i> Preprocessor Config (Optional - Enables Categorical Inputs)
+        </label>
+        <input type="text" id="node-input-preprocessorPath" 
+               style="width: 100%;" 
+               placeholder="/path/to/model.json">
+        <div style="margin-top: 10px; font-size: 12px; color: #666;">
+            <i class="fa fa-info-circle"></i> 
+            This file contains categorical encoders and feature scaling parameters.
+            Auto-detected when you paste an ONNX model path.
+        </div>
+    </div>
+    
+    <div class="form-row" style="margin-top: 15px; padding: 12px; border-radius: 6px;">
+        <div id="categorical-indicator" style="font-size: 14px; font-weight: 500;">
+            <i class="fa fa-spinner fa-spin" style="margin-right: 5px;"></i>
+            <span>Checking for categorical support...</span>
+        </div>
+    </div>
+    
+    <div class="form-row" style="margin-top: 15px;">
+        <label style="font-size: 12px; color: #666;">
+            <i class="fa fa-info-circle"></i>
+            Supports ONNX models with optional categorical input handling
+        </label>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="favoriot-ml">
+    <div class="help-info">
+        <h3><i class="fa fa-microchip"></i> Favoriot ML Node</h3>
+        <p>Performs machine learning inference using ONNX models in Node-RED with full support for categorical inputs.</p>
+        
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; color: white; margin: 20px 0;">
+            <h4 style="color: white; margin-top: 0;"><i class="fa fa-star"></i> New Feature: Categorical Input Support!</h4>
+            <p style="margin-bottom: 0;">Your Favoriot-trained models with categorical features (like "User_Type" or "Traffic_Level") now work seamlessly in Node-RED!</p>
+        </div>
+        
+        <h4><i class="fa fa-cog"></i> Configuration</h4>
+        <ul>
+            <li><strong>Name:</strong> Optional display name for the node</li>
+            <li><strong>ONNX Model Path:</strong> Absolute or relative path to your .onnx model file</li>
+            <li><strong>Preprocessor Config:</strong> Path to <code>.json</code> file (auto-detected, enables categorical support)</li>
+        </ul>
+        
+        <h4><i class="fa fa-sign-in"></i> Input Format - Numeric Only (No Preprocessor)</h4>
+        <p><code>msg.payload</code> should be a JSON object with numeric values:</p>
+        <pre><code>{
+  "temperature": 25.5,
+  "humidity": 60,
+  "pressure": 1013.25
+}</code></pre>
+        
+        <h4><i class="fa fa-sign-in"></i> Input Format - With Categorical Support (With Preprocessor)</h4>
+        <p><strong>Now supports raw string inputs!</strong> Feature names must match training:</p>
+        <pre><code>{
+  "User_Type": "visitor",           // ← String input (automatically encoded)
+  "Nearby_Traffic_Level": "low",    // ← String input
+  "Temperature": 25.5               // ← Numeric input
+}</code></pre>
+        <div style="background-color: #e7f3ff; padding: 12px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #2196F3;">
+            <p><strong><i class="fa fa-check-circle" style="color: #4CAF50;"></i> Automatic Handling:</strong></p>
+            <ul style="margin-bottom: 0;">
+                <li>Strings are automatically encoded using the same mappings from training</li>
+                <li>Numeric features are automatically scaled (StandardScaler)</li>
+                <li>Features are ordered correctly to match model expectations</li>
+                <li>Unknown categories are handled gracefully (no crashes!)</li>
+            </ul>
+        </div>
+        
+        <h4><i class="fa fa-sign-out"></i> Output Format</h4>
+        <p>Successful inference returns:</p>
+        <pre><code>{
+  "prediction": 2,                      // Predicted class/cluster/value
+  "status": "success",
+  "timestamp": "2026-02-12T14:35:22.123Z",
+  "features": ["User_Type", "Nearby_Traffic_Level", "Temperature"],
+  "feature_values": ["visitor", "low", 25.5]
+}</code></pre>
+        
+        <h4><i class="fa fa-exclamation-triangle"></i> Error Output</h4>
+        <p>If an error occurs:</p>
+        <pre><code>{
+  "error": "Missing required feature 'User_Type'",
+  "status": "error",
+  "original_payload": { ... }
+}</code></pre>
+        
+        <h4><i class="fa fa-info-circle"></i> Node Status Indicators</h4>
+        <ul>
+            <li><span style="color: yellow;">Yellow ring</span>: Loading model...</li>
+            <li><span style="color: green;">Green dot</span>: Ready (model loaded)</li>
+            <li><span style="color: blue;">Blue dot</span>: Running inference...</li>
+            <li><span style="color: red;">Red ring/dot</span>: Error loading model or inference failed</li>
+        </ul>
+        
+        <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #ffc107;">
+            <h4 style="margin-top: 0;"><i class="fa fa-exclamation-triangle" style="color: #ffc107;"></i> Important: Feature Order</h4>
+            <p>When using categorical support, feature names in your input payload <strong>must match exactly</strong> the names used during training. The preprocessor config handles the ordering automatically.</p>
+        </div>
+        
+        <h4><i class="fa fa-lightbulb"></i> Examples</h4>
+        
+        <p><strong>Example 1: Clustering with Categorical Features</strong></p>
+        <pre><code>// Inject node with raw categorical strings:
+{
+  "User_Type": "resident",
+  "Nearby_Traffic_Level": "high",
+  "Temperature": 30.2
+}
+
+// Output:
+{
+  "prediction": 2,  // Cluster assignment
+  "status": "success",
+  "timestamp": "2026-02-12T14:35:22.123Z",
+  "features": ["User_Type", "Nearby_Traffic_Level", "Temperature"],
+  "feature_values": ["resident", "high", 30.2]
+}</code></pre>
+        
+        <p><strong>Example 2: Classification with Mixed Inputs</strong></p>
+        <pre><code>// Inject node:
+{
+  "Device_Type": "sensor_A",
+  "Location": "room_101",
+  "Reading": 0.75
+}
+
+// Output:
+{
+  "prediction": "anomaly",  // or numeric class index
+  "status": "success",
+  ...
+}</code></pre>
+        
+        <p><strong>Example 3: Numeric-Only (Legacy Models)</strong></p>
+        <pre><code>// Inject node (no preprocessor config needed):
+{
+  "feature_1": 0.5,
+  "feature_2": 0.8,
+  "feature_3": 0.2
+}
+
+// Output works the same way</code></pre>
+        
+        <h4><i class="fa fa-file-code"></i> Preprocessor Config File Format</h4>
+        <p>The <code>.json</code> file (auto-generated by Favoriot) contains:</p>
+        <pre><code>{
+  "feature_order": ["User_Type", "Nearby_Traffic_Level", "Temperature"],
+  "categorical_features": ["User_Type", "Nearby_Traffic_Level"],
+  "categorical_encoders": {
+    "User_Type": {
+      "type": "label",
+      "mapping": {
+        "visitor": 0,
+        "resident": 1,
+        "staff": 2,
+        "MISSING": 3,
+        "__UNKNOWN__": 4
+      }
+    },
+    "Nearby_Traffic_Level": {
+      "type": "label",
+      "mapping": {
+        "low": 0,
+        "medium": 1,
+        "high": 2
+      }
+    }
+  },
+  "scaler": {
+    "type": "standard",
+    "mean": [1.2, 0.8, 25.5],
+    "scale": [0.95, 0.78, 5.2]
+  }
+}</code></pre>
+        
+        <h4><i class="fa fa-exclamation-circle"></i> Requirements</h4>
+        <ul>
+            <li>ONNX model file (.onnx extension)</li>
+            <li>Optional: Preprocessor config (.json) for categorical support</li>
+            <li>onnxruntime-node dependency (automatically installed)</li>
+            <li>Node.js 14+ for optimal performance</li>
+        </ul>
+        
+        <h4><i class="fa fa-wrench"></i> Troubleshooting</h4>
+        <ol>
+            <li><strong>Model not loading:</strong> Check file path and permissions</li>
+            <li><strong>"Missing feature" error:</strong> Verify input payload has all required features</li>
+            <li><strong>"Non-numeric value" error:</strong> Ensure preprocessor config is loaded for categorical inputs</li>
+            <li><strong>Wrong predictions:</strong> Check that feature names match training exactly</li>
+            <li><strong>Check logs:</strong> Node-RED logs show detailed error messages and feature mappings</li>
+        </ol>
+        
+        <div style="margin-top: 25px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+            <p style="margin-bottom: 0;"><strong><i class="fa fa-info-circle"></i> Favoriot Platform Integration:</strong></p>
+            <p style="margin-bottom: 0; font-size: 14px;">This node is optimized for models exported from the Favoriot Machine Learning Platform. When you train a model with categorical features on Favoriot, the platform automatically generates both the ONNX model and the preprocessor configuration file.</p>
+        </div>
+    </div>
+</script>
+
+<style>
+.help-info {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.help-info h3 {
+    color: #b90083;
+    border-bottom: 2px solid #b90083;
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    font-size: 22px;
+}
+.help-info h4 {
+    color: #444;
+    margin-top: 25px;
+    margin-bottom: 12px;
+    padding-left: 10px;
+    border-left: 3px solid #b90083;
+    font-size: 16px;
+    font-weight: 600;
+}
+.help-info pre {
+    background-color: #f8f9fa;
+    padding: 14px;
+    border-radius: 6px;
+    border: 1px solid #e1e4e8;
+    border-left: 4px solid #b90083;
+    overflow: auto;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    margin: 12px 0;
+    line-height: 1.5;
+}
+.help-info ul, .help-info ol {
+    padding-left: 28px;
+    margin: 12px 0;
+}
+.help-info li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+.help-info code {
+    background-color: #f1f3f4;
+    padding: 3px 7px;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: #d63384;
+}
+.help-info .fa {
+    margin-right: 8px;
+    width: 18px;
+    text-align: center;
+    font-size: 16px;
+}
+/* Removed unused editor-button style */
+</style>
