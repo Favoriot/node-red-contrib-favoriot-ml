@@ -58,9 +58,6 @@ The node appends results to the message object:
 ## 📝 License
 This project is licensed under the MIT License.
 
-## 👤 Author
-mnazrinnapiah - Initial work - Favoriot
-
 ## 🤝 Support
 
 - For Favoriot-specific integration, visit the **Favoriot Developer Documentations**:  
